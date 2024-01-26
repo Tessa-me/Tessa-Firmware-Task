@@ -1,0 +1,68 @@
+#include <avr/eeprom.h>
+
+#define max_size 1011  
+#define delim '\n'
+
+unsigned long startTime;
+float sampleData[256]; 
+int nextSlot = 0;
+float averageSpeed;
+
+uint16_t address = 0;
+
+void setup() {
+  Serial.begin(2400);
+}
+
+void clearEEPROM() {
+  for (uint16_t i = 0; i < max_size; i++) {
+    eeprom_write_byte((uint8_t*)i, 0);
+  }
+}
+
+void addSample(float value) {
+  float sum = 0;
+
+  sampleData[nextSlot] = value;
+  nextSlot++;
+  if (nextSlot >= 256) nextSlot = 0;
+
+  for (int i = 0; i < 256; i++) sum += sampleData[i];
+  averageSpeed = sum / 256;
+}
+
+void loop() {
+  char data = 0;
+
+  if (Serial.available() > 0) {
+    data = Serial.read();
+
+    eeprom_write_byte((uint8_t*)address, data);
+    address++;
+
+    unsigned long endTime = micros();
+    unsigned long elapsedTime = endTime - startTime;
+    float speed = (float)(address * 8) / (float)(elapsedTime / 1000000.0);
+    addSample(speed);
+
+
+    Serial.print(speed);
+    Serial.println(" bits/second");
+
+    startTime = micros();
+  }
+
+  if (address >= max_size|| data == delim) {
+    delay(1000);
+
+    for (uint16_t i = 0; i < address; i += sizeof(float)) {
+      float storedData;
+      eeprom_read_block(&storedData, (void*)i, sizeof(storedData));
+      Serial.print(storedData);
+    }
+    Serial.println();
+
+    clearEEPROM();
+    address = 0;
+  }
+}
